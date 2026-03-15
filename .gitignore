@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.python_packages/
+.venv/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# OS
+.DS_Store
+
+# Packages
+functions.zip
+
+# local env
+.env
