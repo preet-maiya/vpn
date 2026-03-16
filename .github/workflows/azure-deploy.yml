@@ -25,6 +25,7 @@ env:
   RESOURCE_GROUP: ts-exit-rg
   LOCATION: ${{ inputs.location || 'centralindia' }}
   VM_PRIORITY: ${{ inputs.vm_priority || 'Regular' }}
+  SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
 
 jobs:
   validate-bicep:
@@ -59,7 +60,7 @@ jobs:
             --name ts-exit-deploy \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file infra/bicep/rg.bicep \
-            --parameters location=${{ env.LOCATION }} tailscaleAuthKey=${{ secrets.TAILSCALE_AUTH_KEY }} vmPriority=${{ env.VM_PRIORITY }}
+            --parameters location=${{ env.LOCATION }} tailscaleAuthKey=${{ secrets.TAILSCALE_AUTH_KEY }} vmPriority=${{ env.VM_PRIORITY }} sshPublicKey="${{ env.SSH_PUBLIC_KEY }}"
 
   deploy-functions:
     runs-on: ubuntu-latest
