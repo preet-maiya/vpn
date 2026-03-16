@@ -142,12 +142,12 @@ resource "azurerm_service_plan" "plan" {
 }
 
 resource "azurerm_linux_function_app" "func" {
-  name                = "ts-exit-${random_string.suffix.result}"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  service_plan_id     = azurerm_service_plan.plan.id
-  storage_account_name       = azurerm_storage_account.storage.name
-  storage_account_access_key = azurerm_storage_account.storage.primary_access_key
+  name                        = "ts-exit-${random_string.suffix.result}"
+  resource_group_name         = azurerm_resource_group.rg.name
+  location                    = azurerm_resource_group.rg.location
+  service_plan_id             = azurerm_service_plan.plan.id
+  storage_account_name        = azurerm_storage_account.storage.name
+  storage_account_access_key  = azurerm_storage_account.storage.primary_access_key
   functions_extension_version = "~4"
   site_config {
     application_stack {
@@ -159,13 +159,13 @@ resource "azurerm_linux_function_app" "func" {
     type = "SystemAssigned"
   }
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME        = "python"
-    SUBSCRIPTION_ID                 = var.subscription_id
-    RESOURCE_GROUP_NAME             = azurerm_resource_group.rg.name
-    VM_NAME                         = var.vm_name
-    PUBLIC_IP_NAME                  = azurerm_public_ip.pip.name
-    LOCATION                        = var.location
-    MAX_IDLE_SECONDS                = tostring(8 * 3600)
+    FUNCTIONS_WORKER_RUNTIME = "python"
+    SUBSCRIPTION_ID          = var.subscription_id
+    RESOURCE_GROUP_NAME      = azurerm_resource_group.rg.name
+    VM_NAME                  = var.vm_name
+    PUBLIC_IP_NAME           = azurerm_public_ip.pip.name
+    LOCATION                 = var.location
+    MAX_IDLE_SECONDS         = tostring(8 * 3600)
   }
 }
 
@@ -195,9 +195,9 @@ resource "azurerm_consumption_budget_subscription" "budget" {
     end_date   = timeadd(formatdate("YYYY-MM-01", timestamp()), "8760h")
   }
   notification {
-    enabled   = true
-    operator  = "GreaterThan"
-    threshold = 80
+    enabled        = true
+    operator       = "GreaterThan"
+    threshold      = 80
     threshold_type = "Actual"
     contact_emails = []
   }
