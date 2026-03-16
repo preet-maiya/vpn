@@ -125,11 +125,9 @@ jobs:
         run: pytest
 
   pr-full-deploy:
-    name: Ephemeral deploy (label: full-deploy)
+    name: Ephemeral deploy (label as full-deploy)
     runs-on: ubuntu-latest
-    if: |
-      contains(github.event.pull_request.labels.*.name, 'full-deploy') ||
-      needs['detect-changes'].outputs.full_deploy == 'true'
+    if: "contains(github.event.pull_request.labels.*.name, 'full-deploy') || needs['detect-changes'].outputs.full_deploy == 'true'"
     needs: [detect-changes, bicep-validate, what-if-staging, python-syntax]
     env:
       RG_NAME: ts-exit-pr-${{ github.event.number }}-${{ github.run_id }}
