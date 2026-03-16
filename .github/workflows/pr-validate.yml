@@ -1,0 +1,55 @@
+name: pr-validate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  bicep-validate:
+    name: Bicep build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Bicep files build
+        run: |
+          az bicep build --file infra/bicep/main.bicep
+          az bicep build --file infra/bicep/rg.bicep
+
+  # terraform-validate:
+  #   name: Terraform fmt & validate
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: infra/terraform
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: 1.6.6
+  #     - name: Format check
+  #       run: terraform fmt -check
+  #     - name: Init (no backend)
+  #       run: terraform init -backend=false -input=false
+  #       env:
+  #         TF_IN_AUTOMATION: "true"
+  #     - name: Validate configuration
+  #       run: |
+  #         terraform validate -no-color \
+  #           -var subscription_id="00000000-0000-0000-0000-000000000000" \
+  #           -var tailscale_auth_key="dummy"
+  #       env:
+  #         TF_IN_AUTOMATION: "true"
+
+  python-syntax:
+    name: Python syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile functions to bytecode
+        run: python -m compileall functions
