@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       contains(github.event.pull_request.labels.*.name, 'full-deploy') ||
-      needs.detect-changes.outputs.full_deploy == 'true'
+      needs['detect-changes'].outputs.full_deploy == 'true'
     needs: [detect-changes, bicep-validate, what-if-staging, python-syntax]
     env:
       RG_NAME: ts-exit-pr-${{ github.event.number }}-${{ github.run_id }}
