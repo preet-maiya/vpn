@@ -3,16 +3,24 @@ name: deploy-azure
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
       location:
-        description: "Azure region to deploy"
+        description: "Azure region (default centralindia)"
         required: false
-        default: "centralindia"
       vm_priority:
         description: "VM priority (Spot or Regular)"
         required: false
-        default: "Regular"
+        default: "Spot"
 
 permissions:
   id-token: write
@@ -22,56 +30,58 @@ env:
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  RESOURCE_GROUP: ts-exit-rg
-  LOCATION: ${{ inputs.location || 'centralindia' }}
-  VM_PRIORITY: ${{ inputs.vm_priority || 'Regular' }}
-  SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+  LOCATION: ${{ github.event.inputs.location || 'centralindia' }}
+  AZ_CLI_VERSION: "2.56.0"
+  BICEP_VERSION: "0.26.170"
 
 jobs:
-  validate-bicep:
+  deploy-staging:
+    name: Deploy staging
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-      - name: Validate Bicep
-        run: az bicep build --file infra/bicep/main.bicep
-
-  deploy-infra:
-    runs-on: ubuntu-latest
-    needs: validate-bicep
-    steps:
-      - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-      - name: Create resource group
-        run: az group create -n ${{ env.RESOURCE_GROUP }} -l ${{ env.LOCATION }}
-      - name: Deploy Bicep to resource group (incremental)
-        run: |
-          az deployment group create \
-            --name ts-exit-deploy \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --template-file infra/bicep/rg.bicep \
-            --parameters location=${{ env.LOCATION }} tailscaleAuthKey=${{ secrets.TAILSCALE_AUTH_KEY }} vmPriority=${{ env.VM_PRIORITY }} sshPublicKey="${{ env.SSH_PUBLIC_KEY }}"
-
-  deploy-functions:
-    runs-on: ubuntu-latest
-    needs: deploy-infra
+    environment: staging
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    env:
+      RESOURCE_GROUP: ts-exit-staging-rg
+      VM_PRIORITY: ${{ github.event.inputs.vm_priority || 'Spot' }}
+      VM_SIZE: Standard_B1s
+      SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+      TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install deps
+      - name: Setup Azure CLI
+        uses: azure/cli@v1
+        with:
+          azcliversion: ${{ env.AZ_CLI_VERSION }}
+      - name: Install pinned Bicep CLI
+        run: az bicep install --version v${{ env.BICEP_VERSION }}
+      - name: Fail fast if secrets missing
+        run: |
+          test -n "$TAILSCALE_AUTH_KEY" || (echo "Missing TAILSCALE_AUTH_KEY" && exit 1)
+          test -n "$SSH_PUBLIC_KEY" || (echo "Missing SSH_PUBLIC_KEY" && exit 1)
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Create staging resource group
+        run: az group create -n $RESOURCE_GROUP -l ${{ env.LOCATION }}
+      - name: Deploy Bicep to staging
+        run: |
+          az deployment group create \
+            --name ts-exit-deploy \
+            --resource-group $RESOURCE_GROUP \
+            --template-file infra/bicep/rg.bicep \
+            --parameters location=${{ env.LOCATION }} tailscaleAuthKey=$TAILSCALE_AUTH_KEY vmPriority=${{ env.VM_PRIORITY }} vmSize=${{ env.VM_SIZE }} sshPublicKey="$SSH_PUBLIC_KEY"
+      - name: Install function deps
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r functions/requirements.txt --target functions/.python_packages/lib/site-packages
@@ -79,20 +89,95 @@ jobs:
         run: |
           cd functions
           zip -r ../functions.zip . -x "__pycache__/*" -x ".venv/*"
+      - name: Get Function App Name
+        id: getapp-staging
+        run: |
+          APP=$(az functionapp list -g $RESOURCE_GROUP --query "[?contains(name, 'ts-exit')].name | [0]" -o tsv)
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          echo "host=https://$APP.azurewebsites.net" >> $GITHUB_OUTPUT
+      - name: Deploy package
+        run: |
+          az functionapp deployment source config-zip \
+            --name ${{ steps.getapp-staging.outputs.app }} \
+            --resource-group $RESOURCE_GROUP \
+            --src functions.zip
+      - name: Smoke test (state check)
+        run: |
+          STATE=$(az functionapp show -n ${{ steps.getapp-staging.outputs.app }} -g $RESOURCE_GROUP --query "state" -o tsv)
+          if [ "$STATE" != "Running" ]; then
+            echo "Function app state is $STATE" >&2
+            exit 1
+          fi
+
+  deploy-prod:
+    name: Deploy prod
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: prod
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    env:
+      RESOURCE_GROUP: ts-exit-rg
+      VM_PRIORITY: ${{ github.event.inputs.vm_priority || 'Regular' }}
+      VM_SIZE: Standard_B2s_v2
+      SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+      TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Setup Azure CLI
+        uses: azure/cli@v1
+        with:
+          azcliversion: ${{ env.AZ_CLI_VERSION }}
+      - name: Install pinned Bicep CLI
+        run: az bicep install --version v${{ env.BICEP_VERSION }}
+      - name: Fail fast if secrets missing
+        run: |
+          test -n "$TAILSCALE_AUTH_KEY" || (echo "Missing TAILSCALE_AUTH_KEY" && exit 1)
+          test -n "$SSH_PUBLIC_KEY" || (echo "Missing SSH_PUBLIC_KEY" && exit 1)
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-      - name: Get Function App Name
-        id: getapp
+      - name: Create prod resource group
+        run: az group create -n $RESOURCE_GROUP -l ${{ env.LOCATION }}
+      - name: Deploy Bicep to prod
         run: |
-          APP=$(az functionapp list -g ${{ env.RESOURCE_GROUP }} --query "[?contains(name, 'ts-exit')].name | [0]" -o tsv)
+          az deployment group create \
+            --name ts-exit-deploy \
+            --resource-group $RESOURCE_GROUP \
+            --template-file infra/bicep/rg.bicep \
+            --parameters location=${{ env.LOCATION }} tailscaleAuthKey=$TAILSCALE_AUTH_KEY vmPriority=${{ env.VM_PRIORITY }} vmSize=${{ env.VM_SIZE }} sshPublicKey="$SSH_PUBLIC_KEY"
+      - name: Install function deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r functions/requirements.txt --target functions/.python_packages/lib/site-packages
+      - name: Archive functions
+        run: |
+          cd functions
+          zip -r ../functions.zip . -x "__pycache__/*" -x ".venv/*"
+      - name: Get Function App Name
+        id: getapp-prod
+        run: |
+          APP=$(az functionapp list -g $RESOURCE_GROUP --query "[?contains(name, 'ts-exit')].name | [0]" -o tsv)
           echo "app=$APP" >> $GITHUB_OUTPUT
+          echo "host=https://$APP.azurewebsites.net" >> $GITHUB_OUTPUT
       - name: Deploy package
         run: |
           az functionapp deployment source config-zip \
-            --name ${{ steps.getapp.outputs.app }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ steps.getapp-prod.outputs.app }} \
+            --resource-group $RESOURCE_GROUP \
             --src functions.zip
+      - name: Smoke test (state check)
+        run: |
+          STATE=$(az functionapp show -n ${{ steps.getapp-prod.outputs.app }} -g $RESOURCE_GROUP --query "state" -o tsv)
+          if [ "$STATE" != "Running" ]; then
+            echo "Function app state is $STATE" >&2
+            exit 1
+          fi

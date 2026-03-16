@@ -24,6 +24,9 @@ param budgetStartDate string = utcNow()
 ])
 param vmPriority string = 'Regular'
 
+@description('VM size for the exit node')
+param vmSize string = 'Standard_B2s_v2'
+
 // Create or reuse the resource group
 resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: resourceGroupName
@@ -39,6 +42,7 @@ module rgResources 'rg.bicep' = {
     tailscaleAuthKey: tailscaleAuthKey
     sshPublicKey: sshPublicKey
     vmPriority: vmPriority
+    vmSize: vmSize
   }
 }
 

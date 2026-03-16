@@ -19,10 +19,11 @@ param sshPublicKey string = ''
 ])
 param vmPriority string = 'Regular'
 
+@description('VM size for the exit node')
+param vmSize string = 'Standard_B2s_v2'
+
 var vnetCidr = '10.10.0.0/16'
 var subnetCidr = '10.10.1.0/24'
-// var vmSize = 'Standard_B1s'
-var vmSize = 'Standard_B2s_v2'
 var vmName = 'ts-exit'
 var publicIpName = 'ts-exit-pip'
 // include location to avoid clashes when redeploying same RG in another region
