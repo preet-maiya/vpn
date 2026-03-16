@@ -57,9 +57,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Setup Azure CLI
-        uses: azure/cli@v1
+        uses: azure/setup-azcli@v3
         with:
-          azcliversion: ${{ env.AZ_CLI_VERSION }}
+          version: ${{ env.AZ_CLI_VERSION }}
       - name: Install pinned Bicep CLI
         run: az bicep install --version v${{ env.BICEP_VERSION }}
       - name: Fail fast if secrets missing
@@ -130,9 +130,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Setup Azure CLI
-        uses: azure/cli@v1
+        uses: azure/setup-azcli@v3
         with:
-          azcliversion: ${{ env.AZ_CLI_VERSION }}
+          version: ${{ env.AZ_CLI_VERSION }}
       - name: Install pinned Bicep CLI
         run: az bicep install --version v${{ env.BICEP_VERSION }}
       - name: Fail fast if secrets missing
