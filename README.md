@@ -79,12 +79,10 @@ terraform apply \
 ```
 
 ## CI/CD (GitHub Actions)
-Workflow `.github/workflows/azure-deploy.yml`:
-- Validate Bicep
-- Create resource group (idempotent) in `LOCATION`
-- Deploy `infra/bicep/rg.bicep` via `az deployment group create`
-- Package & zip Azure Functions and push via `az functionapp deployment source config-zip`
-Required secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TAILSCALE_AUTH_KEY`.
+- PRs: `.github/workflows/pr-validate.yml` runs Bicep build + what-if against `ts-exit-staging-rg`, pytest for Functions, and an optional ephemeral deploy when the PR has the `full-deploy` label. Keep branch protection on `main` so PR + `pr-validate` must pass; block direct pushes.
+- Main/tag deploys: `.github/workflows/azure-deploy.yml` deploys to staging (`ts-exit-staging-rg`) on pushes to `main`, and to production (`ts-exit-rg`) only on tags matching `v*` or `workflow_dispatch` with `environment=prod`. Both jobs use GitHub Environments (`staging`, `prod`) for secrets/approvals and perform a post-deploy smoke check.
+- Tooling is pinned (Azure CLI 2.56.0, Bicep 0.26.x). Staging defaults to Spot + `Standard_B1s` to stay cheap; prod uses regular priority + `Standard_B2s_v2`.
+- Required secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TAILSCALE_AUTH_KEY` (per environment), `SSH_PUBLIC_KEY`.
 
 ## Starting the VPN
 1. Start VM on-demand (boot ≈ 30s):

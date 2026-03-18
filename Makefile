@@ -97,3 +97,8 @@ check-key:
 
 clean-zip:
 	@rm -f functions.zip
+
+.PHONY: test
+test:
+	cd functions && python -m pip install -r requirements.txt && python -m pip install pytest
+	cd functions && pytest
