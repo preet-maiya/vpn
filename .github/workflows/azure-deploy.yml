@@ -56,9 +56,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Pin Azure CLI
+      - name: Install Azure CLI ${{ env.AZ_CLI_VERSION }}
         run: |
-          az upgrade --yes --version $AZ_CLI_VERSION
+          python -m pip install --upgrade "azure-cli==${{ env.AZ_CLI_VERSION }}"
           az version
       - name: Install pinned Bicep CLI
         run: az bicep install --version v${{ env.BICEP_VERSION }}
@@ -129,9 +129,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Pin Azure CLI
+      - name: Install Azure CLI ${{ env.AZ_CLI_VERSION }}
         run: |
-          az upgrade --yes --version $AZ_CLI_VERSION
+          python -m pip install --upgrade "azure-cli==${{ env.AZ_CLI_VERSION }}"
           az version
       - name: Install pinned Bicep CLI
         run: az bicep install --version v${{ env.BICEP_VERSION }}
